@@ -1,0 +1,67 @@
+# =============================================================================
+# Release Notes Configuration
+# =============================================================================
+# Automatically categorizes PRs in GitHub's auto-generated release notes.
+#
+# When creating a new release, GitHub groups merged PRs by their labels
+# into the categories defined below.
+#
+# Usage:
+#   1. Go to Releases → Draft a new release
+#   2. Click "Generate release notes"
+#   3. PRs are auto-sorted into these categories based on their labels
+# =============================================================================
+
+changelog:
+  exclude:
+    labels:
+      - "skip-changelog"
+    authors:
+      - "dependabot"
+      - "github-actions[bot]"
+
+  categories:
+    - title: "🚀 Features"
+      labels:
+        - "enhancement"
+        - "feature"
+
+    - title: "🐛 Bug Fixes"
+      labels:
+        - "bug"
+        - "fix"
+        - "hotfix"
+
+    - title: "🔒 Security"
+      labels:
+        - "security"
+
+    - title: "⚡ Performance"
+      labels:
+        - "performance"
+
+    - title: "🎨 UI/UX"
+      labels:
+        - "ui/ux"
+        - "design"
+
+    - title: "📖 Documentation"
+      labels:
+        - "documentation"
+        - "docs"
+
+    - title: "🧪 Testing"
+      labels:
+        - "testing"
+        - "test"
+
+    - title: "🔧 Maintenance"
+      labels:
+        - "chore"
+        - "maintenance"
+        - "refactor"
+        - "dependencies"
+
+    - title: "📦 Other Changes"
+      labels:
+        - "*"
