@@ -17,7 +17,11 @@ name: Issue Automation
 
 on:
   issues:
-    types: [opened, closed, deleted, reopened]
+    types: [opened, closed, deleted, reopened, transferred]
+
+concurrency:
+  group: issue-${{ github.event.issue.number }}
+  cancel-in-progress: false
 
 env:
   GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
@@ -120,3 +124,29 @@ jobs:
 
           gh issue close ${{ github.event.issue.number }} \
             --repo "${{ github.repository }}"
+
+  # ---------------------------------------------------------------------------
+  # Issue Transferred → Remove from this project board
+  # (The receiving repo's automation will pick it up if configured)
+  # ---------------------------------------------------------------------------
+  issue-transferred:
+    name: "Handle issue transfer"
+    if: github.event.action == 'transferred'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Remove transferred issue from project
+        run: |
+          source .github/scripts/project-helpers.sh
+          # The old node_id may still be valid briefly after transfer
+          ITEM_ID=$(get_item_id_for_content "${{ github.event.issue.node_id }}" 2>/dev/null || echo "")
+          if [ -n "$ITEM_ID" ] && [ "$ITEM_ID" != "null" ]; then
+            remove_item "$ITEM_ID"
+            echo "Transferred issue removed from project board"
+          else
+            echo "Issue not found in project or already removed"
+          fi
