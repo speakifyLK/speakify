@@ -13,13 +13,14 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# Project Data (cached)
+# Project Data (cached via temp file to survive subshells)
 # ---------------------------------------------------------------------------
-_PROJECT_DATA_CACHE=""
+_PROJECT_CACHE_FILE="${TMPDIR:-/tmp}/.gh-project-cache-$$"
 
 fetch_project_data() {
-  if [ -n "$_PROJECT_DATA_CACHE" ]; then
-    echo "$_PROJECT_DATA_CACHE"
+  # Return from file cache if it exists (survives subshells unlike variables)
+  if [ -f "$_PROJECT_CACHE_FILE" ]; then
+    cat "$_PROJECT_CACHE_FILE"
     return 0
   fi
 
@@ -68,7 +69,8 @@ fetch_project_data() {
     return 1
   fi
 
-  _PROJECT_DATA_CACHE="$project_data"
+  # Write to file so subshells can read it
+  echo "$project_data" > "$_PROJECT_CACHE_FILE"
   echo "$project_data"
 }
 
