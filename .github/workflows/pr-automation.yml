@@ -278,8 +278,59 @@ jobs:
             echo "has_issues=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Assign and move to In Review
+      - name: Check for duplicate PRs
         if: steps.extract.outputs.has_issues == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBERS: ${{ steps.extract.outputs.issue_numbers }}
+          CURRENT_PR: ${{ github.event.pull_request.number }}
+          FULL_REPO: ${{ github.repository }}
+        run: |
+          source .github/scripts/project-helpers.sh
+
+          # Get all open PRs except this one
+          ALL_OPEN_PRS=$(gh pr list \
+            --repo "$FULL_REPO" \
+            --state open \
+            --json number,body,headRefName \
+            --jq ".[] | select(.number != $CURRENT_PR)")
+
+          echo "$ALL_OPEN_PRS" | jq -c '.' 2>/dev/null > /tmp/open_prs.json || true
+
+          DUPLICATE_DETECTED=false
+
+          for ISSUE_NUM in $ISSUE_NUMBERS; do
+            [ "$DUPLICATE_DETECTED" = "true" ] && break
+
+            while IFS= read -r pr_json; do
+              [ -z "$pr_json" ] && continue
+
+              OTHER_NUM=$(echo "$pr_json" | jq -r '.number')
+              OTHER_BODY=$(echo "$pr_json" | jq -r '.body // ""')
+              OTHER_BRANCH=$(echo "$pr_json" | jq -r '.headRefName')
+
+              BODY_MATCH=$(echo "$OTHER_BODY" | grep -oiE "(close[sd]?|fix(e[sd])?|resolve[sd]?)\s+#${ISSUE_NUM}(\b)" || echo "")
+              BRANCH_ISSUE=$(extract_issue_number_from_branch "$OTHER_BRANCH")
+
+              if [ -n "$BODY_MATCH" ] || [ "$BRANCH_ISSUE" = "$ISSUE_NUM" ]; then
+                echo "::error::Duplicate PR detected! PR #$OTHER_NUM already addresses issue #$ISSUE_NUM"
+
+                gh pr comment "$CURRENT_PR" \
+                  --repo "$FULL_REPO" \
+                  --body "**Duplicate PR detected.** PR #$OTHER_NUM already addresses issue #$ISSUE_NUM. Only one PR per issue is allowed. This PR will be closed automatically."
+
+                gh pr close "$CURRENT_PR" \
+                  --repo "$FULL_REPO"
+
+                DUPLICATE_DETECTED=true
+                echo "DUPLICATE_FOUND=true" >> "$GITHUB_ENV"
+                break
+              fi
+            done < /tmp/open_prs.json
+          done
+
+      - name: Assign and move to In Review
+        if: steps.extract.outputs.has_issues == 'true' && env.DUPLICATE_FOUND != 'true'
         env:
           ISSUE_NUMBERS: ${{ steps.extract.outputs.issue_numbers }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}

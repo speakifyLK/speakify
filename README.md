@@ -29,3 +29,36 @@
 - **Reviews are advisory.** "Request Changes" won't block merges — use comments for feedback.
 - **Use draft PRs** if you're not ready for review. The card stays in "In Progress" until you mark it ready.
 - **Always link an issue.** PRs without a linked issue get a reminder comment.
+
+---
+
+### Workflow State Diagram
+
+```mermaid
+stateDiagram-v2
+    [*] --> Todo : Issue opened
+
+    Todo --> InProgress : Branch created\n(with issue # in name)
+    
+    InProgress --> InReview : PR opened (non-draft)\nor draft PR marked ready
+    InProgress --> Todo : Branch deleted\n(no PR was ever opened)
+    InProgress --> Done : Issue closed mid-workflow
+    
+    InReview --> InProgress : PR converted to draft
+    InReview --> Done : PR merged\nor PR closed (not merged)
+    InReview --> Done : Issue closed mid-workflow
+    
+    Todo --> Done : Issue closed directly
+
+    Done --> [*]
+
+    state "Todo" as Todo
+    state "In Progress" as InProgress
+    state "In Review" as InReview
+    state "Done" as Done
+
+    note right of Todo : Issue auto-assigned\nto creator
+    note right of InReview : PR & issue auto-assigned\nto PR opener.\nDuplicate PRs auto-closed.
+    note left of Done : Issue closed automatically.\nReopening issues or PRs\nis prevented.
+```
+
