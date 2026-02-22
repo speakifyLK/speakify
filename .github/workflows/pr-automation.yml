@@ -27,7 +27,7 @@ on:
     types: [submitted]
 
 concurrency:
-  group: pr-${{ github.event.pull_request.number || github.event.review.pull_request_number }}
+  group: pr-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
 env:
@@ -319,6 +319,7 @@ jobs:
     if: >-
       github.event_name == 'pull_request' &&
       github.event.action == 'edited' &&
+      github.event.changes.body != null &&
       github.event.pull_request.state == 'open' &&
       github.event.pull_request.draft == false
     runs-on: ubuntu-latest
