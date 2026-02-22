@@ -1,9 +1,3 @@
-# speakify
-
-- test 2
-
----
-
 ## Project Workflow Automation
 
 This repository uses GitHub Actions + GitHub Projects (v2) to automate the full development lifecycle. Every issue, branch, PR, and review action is tracked automatically on the project board.
@@ -30,12 +24,13 @@ Issue ──→ Branch ──→ PR ──→ Review ──→ Merge PR ──�
 
 ### Project Board States
 
-| Status        | Triggered By                                     |
-|---------------|--------------------------------------------------|
-| **Todo**      | Issue opened / Branch deleted without a PR        |
-| **In Progress** | Branch created with issue number in name       |
-| **In Review** | PR opened and linked to issue                    |
-| **Done**      | PR merged / PR closed / Issue closed (any state) |
+| Status        | Triggered By                                      |
+|---------------|---------------------------------------------------|
+| **Todo**      | Issue opened / Branch deleted without a PR         |
+| **In Progress** | Branch created with issue number in name        |
+| **In Review** | Non-draft PR opened / Draft PR marked ready / PR edited to link issue |
+| **Done**      | PR merged / PR closed / Issue closed (any state)  |
+| *(removed)*   | Issue deleted / Issue transferred out              |
 
 ### Laws (Enforced Automatically)
 
@@ -52,6 +47,30 @@ If an issue is closed while its project card is in **In Progress** or **In Revie
 
 #### Branch Deletion Without a PR
 If a branch is deleted without a PR ever being opened, the linked issue's card moves back from **In Progress** to **Todo** instead of getting stuck. The workflow checks whether any PR (open, closed, or merged) was ever associated with the branch before deciding.
+
+#### Draft PRs
+Draft PRs do **not** move the issue to "In Review". The card stays in "In Progress" until the PR is marked as ready for review (`ready_for_review` event), at which point it moves to "In Review".
+
+#### PR Description Edited After Opening
+If `Closes #X` is added to the PR body after the initial open, the `edited` event re-extracts linked issues and moves them to "In Review". This prevents cards from getting stuck when the issue link is added late.
+
+#### Issue Transferred to Another Repository
+When an issue is transferred out, it is automatically removed from this project board. The receiving repository's automation (if configured) will pick it up.
+
+#### Concurrency Controls
+Each workflow uses concurrency groups (per issue number, PR number, or branch name) to prevent overlapping runs from racing against each other (e.g., PR merge triggering both `pr-merged` and `issue-closed` simultaneously).
+
+#### PR Converted Back to Draft
+If a non-draft PR is converted to a draft, the linked issue card moves back from **In Review** to **In Progress**. It returns to "In Review" when the PR is marked ready again.
+
+#### PR Opened Referencing a Closed Issue
+All PR handlers (`opened`, `ready_for_review`, `edited`) check if the linked issue is still **open** before moving it to "In Review". This prevents accidentally pulling a "Done" card back to "In Review".
+
+#### Multiple Branches for Same Issue
+When a branch is deleted, the workflow checks if any *other* branch still references the same issue number before moving it back to "Todo". If another branch exists, the card stays in "In Progress".
+
+#### Bot-Triggered Close Loops
+When the prevent-reopen bot re-closes a PR, the `pr-closed-unmerged` handler detects the closer is `github-actions[bot]` and skips posting a duplicate "create a new issue" comment.
 
 ### Setup Instructions
 

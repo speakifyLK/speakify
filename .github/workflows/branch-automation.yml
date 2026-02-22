@@ -21,6 +21,10 @@ on:
   create:
   delete:
 
+concurrency:
+  group: branch-${{ github.event.ref }}
+  cancel-in-progress: false
+
 env:
   GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
   PROJECT_OWNER: ${{ vars.PROJECT_OWNER }}
@@ -126,7 +130,26 @@ jobs:
             exit 0
           fi
 
-          echo "No PRs found for branch '$BRANCH' — moving issue back to Todo"
+          echo "No PRs found for branch '$BRANCH' — checking for other active branches"
+
+          # Check if another branch for the same issue still exists
+          OTHER_BRANCH_EXISTS=false
+          BRANCHES=$(gh api "repos/${FULL_REPO}/branches" --paginate --jq '.[].name' 2>/dev/null || echo "")
+          for b in $BRANCHES; do
+            [ "$b" = "$BRANCH" ] && continue  # skip the deleted branch itself (may still show briefly)
+            OTHER_ISSUE=$(extract_issue_number_from_branch "$b")
+            if [ "$OTHER_ISSUE" = "$ISSUE_NUMBER" ]; then
+              echo "Another branch '$b' still references issue #$ISSUE_NUMBER — keeping In Progress"
+              OTHER_BRANCH_EXISTS=true
+              break
+            fi
+          done
+
+          if [ "$OTHER_BRANCH_EXISTS" = "true" ]; then
+            exit 0
+          fi
+
+          echo "No other branches for issue #$ISSUE_NUMBER — moving back to Todo"
 
           # Verify issue exists and is still open
           ISSUE_STATE=$(gh issue view "$ISSUE_NUMBER" \

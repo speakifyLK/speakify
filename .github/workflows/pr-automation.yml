@@ -22,9 +22,13 @@ name: PR Automation
 
 on:
   pull_request:
-    types: [opened, closed, reopened]
+    types: [opened, closed, reopened, edited, ready_for_review, converted_to_draft]
   pull_request_review:
     types: [submitted]
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number || github.event.review.pull_request_number }}
+  cancel-in-progress: false
 
 env:
   GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
@@ -37,7 +41,10 @@ jobs:
   # ---------------------------------------------------------------------------
   pr-opened:
     name: "Handle PR opened"
-    if: github.event_name == 'pull_request' && github.event.action == 'opened'
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action == 'opened' &&
+      github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -106,9 +113,15 @@ jobs:
             --json number,body,headRefName \
             --jq ".[] | select(.number != $CURRENT_PR)")
 
+          # Write PR data to temp file to avoid subshell issues with pipes
+          echo "$ALL_OPEN_PRS" | jq -c '.' 2>/dev/null > /tmp/open_prs.json || true
+
+          DUPLICATE_DETECTED=false
+
           for ISSUE_NUM in $ISSUE_NUMBERS; do
-            # Check each open PR for references to the same issue
-            echo "$ALL_OPEN_PRS" | jq -c '.' 2>/dev/null | while IFS= read -r pr_json; do
+            [ "$DUPLICATE_DETECTED" = "true" ] && break
+
+            while IFS= read -r pr_json; do
               [ -z "$pr_json" ] && continue
 
               OTHER_NUM=$(echo "$pr_json" | jq -r '.number')
@@ -129,10 +142,11 @@ jobs:
                 gh pr close "$CURRENT_PR" \
                   --repo "$FULL_REPO"
 
+                DUPLICATE_DETECTED=true
                 echo "DUPLICATE_FOUND=true" >> "$GITHUB_ENV"
-                exit 0
+                break
               fi
-            done
+            done < /tmp/open_prs.json
           done
 
       - name: Assign PR to opener
@@ -158,6 +172,16 @@ jobs:
           for ISSUE_NUM in $ISSUE_NUMBERS; do
             echo "Processing issue #$ISSUE_NUM..."
 
+            # Skip if issue is not open (don't move a closed/Done issue back to In Review)
+            ISSUE_STATE=$(gh issue view "$ISSUE_NUM" \
+              --repo "$FULL_REPO" \
+              --json state --jq '.state' 2>/dev/null || echo "UNKNOWN")
+
+            if [ "$ISSUE_STATE" != "OPEN" ]; then
+              echo "Issue #$ISSUE_NUM is not open (state: $ISSUE_STATE) — skipping"
+              continue
+            fi
+
             # Assign issue to PR opener
             gh issue edit "$ISSUE_NUM" \
               --repo "$FULL_REPO" \
@@ -170,6 +194,182 @@ jobs:
               ensure_status "$ISSUE_NODE_ID" "In Review"
             else
               echo "::warning::Could not find issue #$ISSUE_NUM"
+            fi
+          done
+
+  # ---------------------------------------------------------------------------
+  # PR Converted to Draft → Move issue back to "In Progress" from "In Review"
+  # ---------------------------------------------------------------------------
+  pr-converted-to-draft:
+    name: "Handle PR converted to draft"
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action == 'converted_to_draft'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Move linked issues back to In Progress
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.event.repository.name }}
+        run: |
+          source .github/scripts/project-helpers.sh
+
+          ISSUE_NUMBERS=$(get_linked_issue_numbers \
+            "$PR_NUMBER" "$REPO_OWNER" "$REPO_NAME" "$PR_BRANCH" "$PR_BODY")
+
+          if [ -z "$ISSUE_NUMBERS" ]; then
+            echo "No linked issues found — skipping"
+            exit 0
+          fi
+
+          for ISSUE_NUM in $ISSUE_NUMBERS; do
+            ISSUE_NODE_ID=$(get_issue_node_id "$ISSUE_NUM" "$REPO_OWNER" "$REPO_NAME")
+            if [ -n "$ISSUE_NODE_ID" ] && [ "$ISSUE_NODE_ID" != "null" ]; then
+              ensure_status "$ISSUE_NODE_ID" "In Progress"
+            fi
+          done
+
+  # ---------------------------------------------------------------------------
+  # Draft PR marked ready for review → Same as opened (move to In Review)
+  # ---------------------------------------------------------------------------
+  pr-ready-for-review:
+    name: "Handle draft → ready for review"
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action == 'ready_for_review'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract linked issue numbers
+        id: extract
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.event.repository.name }}
+        run: |
+          source .github/scripts/project-helpers.sh
+
+          ISSUE_NUMBERS=$(get_linked_issue_numbers \
+            "$PR_NUMBER" "$REPO_OWNER" "$REPO_NAME" "$PR_BRANCH" "$PR_BODY")
+
+          echo "issue_numbers=$ISSUE_NUMBERS" >> "$GITHUB_OUTPUT"
+
+          if [ -z "$ISSUE_NUMBERS" ]; then
+            echo "has_issues=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_issues=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Assign and move to In Review
+        if: steps.extract.outputs.has_issues == 'true'
+        env:
+          ISSUE_NUMBERS: ${{ steps.extract.outputs.issue_numbers }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.event.repository.name }}
+          FULL_REPO: ${{ github.repository }}
+        run: |
+          source .github/scripts/project-helpers.sh
+
+          for ISSUE_NUM in $ISSUE_NUMBERS; do
+            # Skip if issue is not open
+            ISSUE_STATE=$(gh issue view "$ISSUE_NUM" \
+              --repo "$FULL_REPO" \
+              --json state --jq '.state' 2>/dev/null || echo "UNKNOWN")
+
+            if [ "$ISSUE_STATE" != "OPEN" ]; then
+              echo "Issue #$ISSUE_NUM is not open (state: $ISSUE_STATE) — skipping"
+              continue
+            fi
+
+            gh issue edit "$ISSUE_NUM" \
+              --repo "$FULL_REPO" \
+              --add-assignee "$PR_AUTHOR" 2>/dev/null || true
+
+            ISSUE_NODE_ID=$(get_issue_node_id "$ISSUE_NUM" "$REPO_OWNER" "$REPO_NAME")
+            if [ -n "$ISSUE_NODE_ID" ] && [ "$ISSUE_NODE_ID" != "null" ]; then
+              ensure_status "$ISSUE_NODE_ID" "In Review"
+            fi
+          done
+
+  # ---------------------------------------------------------------------------
+  # PR Edited → Re-check linked issues and update project board
+  # (handles case where Closes #X is added to body after initial PR open)
+  # ---------------------------------------------------------------------------
+  pr-edited:
+    name: "Handle PR edited (re-link issues)"
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action == 'edited' &&
+      github.event.pull_request.state == 'open' &&
+      github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Re-extract and update linked issues
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.event.repository.name }}
+          FULL_REPO: ${{ github.repository }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          source .github/scripts/project-helpers.sh
+
+          ISSUE_NUMBERS=$(get_linked_issue_numbers \
+            "$PR_NUMBER" "$REPO_OWNER" "$REPO_NAME" "$PR_BRANCH" "$PR_BODY")
+
+          if [ -z "$ISSUE_NUMBERS" ]; then
+            echo "No linked issues found after edit — skipping"
+            exit 0
+          fi
+
+          for ISSUE_NUM in $ISSUE_NUMBERS; do
+            echo "Processing issue #$ISSUE_NUM..."
+
+            # Skip if issue is not open
+            ISSUE_STATE=$(gh issue view "$ISSUE_NUM" \
+              --repo "$FULL_REPO" \
+              --json state --jq '.state' 2>/dev/null || echo "UNKNOWN")
+
+            if [ "$ISSUE_STATE" != "OPEN" ]; then
+              echo "Issue #$ISSUE_NUM is not open (state: $ISSUE_STATE) — skipping"
+              continue
+            fi
+
+            gh issue edit "$ISSUE_NUM" \
+              --repo "$FULL_REPO" \
+              --add-assignee "$PR_AUTHOR" 2>/dev/null || true
+
+            ISSUE_NODE_ID=$(get_issue_node_id "$ISSUE_NUM" "$REPO_OWNER" "$REPO_NAME")
+            if [ -n "$ISSUE_NODE_ID" ] && [ "$ISSUE_NODE_ID" != "null" ]; then
+              ensure_status "$ISSUE_NODE_ID" "In Review"
             fi
           done
 
@@ -248,11 +448,18 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_BRANCH: ${{ github.event.pull_request.head.ref }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_SENDER: ${{ github.event.sender.login }}
           REPO_OWNER: ${{ github.repository_owner }}
           REPO_NAME: ${{ github.event.repository.name }}
           FULL_REPO: ${{ github.repository }}
         run: |
           source .github/scripts/project-helpers.sh
+
+          # Skip if the close was triggered by our own bot (prevent-reopen loop)
+          if [ "$PR_SENDER" = "github-actions[bot]" ]; then
+            echo "Close triggered by bot (prevent-reopen) — skipping to avoid duplicate comments"
+            exit 0
+          fi
 
           ISSUE_NUMBERS=$(get_linked_issue_numbers \
             "$PR_NUMBER" "$REPO_OWNER" "$REPO_NAME" "$PR_BRANCH" "$PR_BODY")
