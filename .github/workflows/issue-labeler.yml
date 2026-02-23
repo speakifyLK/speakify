@@ -8,14 +8,14 @@
 #   - Issue opened → Scan title + body for keywords → Apply matching labels
 #
 # Labels applied:
-#   bug          — error, crash, broken, not working, fail, regression, fix
-#   enhancement  — feature, add, implement, improve, enhance, new, request
-#   documentation— docs, documentation, readme, guide, typo, spelling
-#   question     — question, how to, help, confused, clarify, explain
-#   performance  — slow, performance, speed, optimize, memory, latency
-#   security     — security, vulnerability, CVE, auth, token, XSS, injection
-#   ui/ux        — UI, UX, design, layout, style, CSS, responsive, visual
-#   testing      — test, coverage, spec, assert, mock, CI, flaky
+#   bug          — [BUG], error, crash, broken, not working, fail, regression
+#   enhancement  — [FEATURE], feature, add, implement, improve, enhance, new, request
+#   documentation— [DOCS], docs, documentation, readme, guide, typo, spelling
+#   question     — [QUESTION], question, how to, help, confused, clarify, explain
+#   performance  — [PERF], perf, slow, speed, optimize, memory, latency
+#   security     — [SECURITY], security, vulnerability, CVE, auth, token, XSS, injection
+#   ui/ux        — [UI/UX], UI, UX, design, layout, style, CSS, responsive, visual
+#   testing      — [TEST], test, coverage, spec, assert, mock, CI, flaky
 #
 # Note: Labels are created automatically if they don't already exist.
 # =============================================================================
@@ -71,7 +71,7 @@ jobs:
           fi
 
           # Performance indicators
-          if echo "$TEXT" | grep -qiE '\b(slow|performance|speed|optimi(z|s)(e|ation)|memory|latency|lag(gy)?|bottleneck|profil(e|ing))\b'; then
+          if echo "$TEXT" | grep -qiE '\b(perf(ormance)?|slow|speed|optimi(z|s)(e|ation)|memory|latency|lag(gy)?|bottleneck|profil(e|ing))\b'; then
             LABELS+=("performance")
           fi
 

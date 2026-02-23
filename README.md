@@ -26,8 +26,6 @@
 
 - **One PR per issue.** Duplicate PRs are auto-closed.
 - **Don't reopen issues or PRs.** They will be auto-closed. Create a new issue instead.
-- **Reviews are advisory.** "Request Changes" won't block merges — use comments for feedback.
-- **Use draft PRs** if you're not ready for review. The card stays in "In Progress" until you mark it ready.
 - **Always link an issue.** PRs without a linked issue get a reminder comment.
 
 ---

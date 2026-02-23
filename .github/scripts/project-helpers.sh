@@ -342,3 +342,19 @@ get_issue_node_id() {
     }' -f owner="$owner" -f repo="$repo" -F number="$issue_number" \
     --jq '.data.repository.issue.id' 2>/dev/null || echo ""
 }
+
+# Get the node ID of a pull request by number
+# Args: $1 = PR number, $2 = repo owner, $3 = repo name
+get_pr_node_id() {
+  local pr_number="$1"
+  local owner="$2"
+  local repo="$3"
+
+  gh api graphql -f query='
+    query($owner: String!, $repo: String!, $number: Int!) {
+      repository(owner: $owner, name: $repo) {
+        pullRequest(number: $number) { id }
+      }
+    }' -f owner="$owner" -f repo="$repo" -F number="$pr_number" \
+    --jq '.data.repository.pullRequest.id' 2>/dev/null || echo ""
+}
