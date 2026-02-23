@@ -226,6 +226,29 @@ jobs:
             echo "No labels to propagate"
           fi
 
+      - name: Add PR to project
+        if: steps.dup_check.outputs.duplicate_found != 'true'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.event.repository.name }}
+        run: |
+          source .github/scripts/project-helpers.sh
+
+          PR_NODE_ID=$(get_pr_node_id "$PR_NUMBER" "$REPO_OWNER" "$REPO_NAME")
+
+          if [ -n "$PR_NODE_ID" ] && [ "$PR_NODE_ID" != "null" ]; then
+            ITEM_ID=$(get_item_id_for_content "$PR_NODE_ID")
+            if [ -z "$ITEM_ID" ] || [ "$ITEM_ID" = "null" ]; then
+              add_to_project "$PR_NODE_ID"
+              echo "✓ PR #$PR_NUMBER added to project"
+            else
+              echo "PR #$PR_NUMBER already in project"
+            fi
+          else
+            echo "::warning::Could not resolve PR #$PR_NUMBER node ID"
+          fi
+
   # ---------------------------------------------------------------------------
   # PR Converted to Draft → Move issue back to "In Progress" from "In Review"
   # ---------------------------------------------------------------------------
@@ -418,6 +441,29 @@ jobs:
             echo "No labels to propagate"
           fi
 
+      - name: Add PR to project
+        if: steps.dup_check.outputs.duplicate_found != 'true'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.event.repository.name }}
+        run: |
+          source .github/scripts/project-helpers.sh
+
+          PR_NODE_ID=$(get_pr_node_id "$PR_NUMBER" "$REPO_OWNER" "$REPO_NAME")
+
+          if [ -n "$PR_NODE_ID" ] && [ "$PR_NODE_ID" != "null" ]; then
+            ITEM_ID=$(get_item_id_for_content "$PR_NODE_ID")
+            if [ -z "$ITEM_ID" ] || [ "$ITEM_ID" = "null" ]; then
+              add_to_project "$PR_NODE_ID"
+              echo "✓ PR #$PR_NUMBER added to project"
+            else
+              echo "PR #$PR_NUMBER already in project"
+            fi
+          else
+            echo "::warning::Could not resolve PR #$PR_NUMBER node ID"
+          fi
+
   # ---------------------------------------------------------------------------
   # PR Edited → Re-check linked issues and update project board
   # (handles case where Closes #X is added to body after initial PR open)
@@ -496,6 +542,18 @@ jobs:
             gh pr edit "$PR_NUMBER" \
               --repo "$FULL_REPO" \
               --add-label "$LABEL_CSV" || true
+          fi
+
+          # Add PR to project (same project as the issue)
+          PR_NODE_ID=$(get_pr_node_id "$PR_NUMBER" "$REPO_OWNER" "$REPO_NAME")
+          if [ -n "$PR_NODE_ID" ] && [ "$PR_NODE_ID" != "null" ]; then
+            ITEM_ID=$(get_item_id_for_content "$PR_NODE_ID")
+            if [ -z "$ITEM_ID" ] || [ "$ITEM_ID" = "null" ]; then
+              add_to_project "$PR_NODE_ID"
+              echo "✓ PR #$PR_NUMBER added to project"
+            else
+              echo "PR #$PR_NUMBER already in project"
+            fi
           fi
 
   # ---------------------------------------------------------------------------
