@@ -97,6 +97,7 @@ jobs:
           )"
 
       - name: Check for duplicate PRs
+        id: dup_check
         if: steps.extract.outputs.has_issues == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -143,14 +144,14 @@ jobs:
                   --repo "$FULL_REPO"
 
                 DUPLICATE_DETECTED=true
-                echo "DUPLICATE_FOUND=true" >> "$GITHUB_ENV"
+                echo "duplicate_found=true" >> "$GITHUB_OUTPUT"
                 break
               fi
             done < /tmp/open_prs.json
           done
 
       - name: Assign PR to opener
-        if: env.DUPLICATE_FOUND != 'true'
+        if: steps.dup_check.outputs.duplicate_found != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -159,7 +160,7 @@ jobs:
             --add-assignee "${{ github.event.pull_request.user.login }}" || true
 
       - name: Assign issue to PR opener and move to In Review
-        if: steps.extract.outputs.has_issues == 'true' && env.DUPLICATE_FOUND != 'true'
+        if: steps.extract.outputs.has_issues == 'true' && steps.dup_check.outputs.duplicate_found != 'true'
         env:
           ISSUE_NUMBERS: ${{ steps.extract.outputs.issue_numbers }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
@@ -196,6 +197,34 @@ jobs:
               echo "::warning::Could not find issue #$ISSUE_NUM"
             fi
           done
+
+      - name: Propagate issue labels to PR
+        if: steps.extract.outputs.has_issues == 'true' && steps.dup_check.outputs.duplicate_found != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBERS: ${{ steps.extract.outputs.issue_numbers }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          FULL_REPO: ${{ github.repository }}
+        run: |
+          LABELS_FILE=$(mktemp)
+          for ISSUE_NUM in $ISSUE_NUMBERS; do
+            gh issue view "$ISSUE_NUM" \
+              --repo "$FULL_REPO" \
+              --json labels --jq '.labels[].name' >> "$LABELS_FILE" 2>/dev/null || true
+          done
+
+          # Deduplicate and build comma-separated list
+          LABEL_CSV=$(sort -u "$LABELS_FILE" | grep -v '^$' | paste -sd ',' - || echo "")
+          rm -f "$LABELS_FILE"
+
+          if [ -n "$LABEL_CSV" ]; then
+            echo "Propagating labels to PR #$PR_NUMBER: $LABEL_CSV"
+            gh pr edit "$PR_NUMBER" \
+              --repo "$FULL_REPO" \
+              --add-label "$LABEL_CSV" || true
+          else
+            echo "No labels to propagate"
+          fi
 
   # ---------------------------------------------------------------------------
   # PR Converted to Draft → Move issue back to "In Progress" from "In Review"
@@ -279,6 +308,7 @@ jobs:
           fi
 
       - name: Check for duplicate PRs
+        id: dup_check
         if: steps.extract.outputs.has_issues == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -323,14 +353,14 @@ jobs:
                   --repo "$FULL_REPO"
 
                 DUPLICATE_DETECTED=true
-                echo "DUPLICATE_FOUND=true" >> "$GITHUB_ENV"
+                echo "duplicate_found=true" >> "$GITHUB_OUTPUT"
                 break
               fi
             done < /tmp/open_prs.json
           done
 
       - name: Assign and move to In Review
-        if: steps.extract.outputs.has_issues == 'true' && env.DUPLICATE_FOUND != 'true'
+        if: steps.extract.outputs.has_issues == 'true' && steps.dup_check.outputs.duplicate_found != 'true'
         env:
           ISSUE_NUMBERS: ${{ steps.extract.outputs.issue_numbers }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
@@ -360,6 +390,33 @@ jobs:
               ensure_status "$ISSUE_NODE_ID" "In Review"
             fi
           done
+
+      - name: Propagate issue labels to PR
+        if: steps.extract.outputs.has_issues == 'true' && steps.dup_check.outputs.duplicate_found != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBERS: ${{ steps.extract.outputs.issue_numbers }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          FULL_REPO: ${{ github.repository }}
+        run: |
+          LABELS_FILE=$(mktemp)
+          for ISSUE_NUM in $ISSUE_NUMBERS; do
+            gh issue view "$ISSUE_NUM" \
+              --repo "$FULL_REPO" \
+              --json labels --jq '.labels[].name' >> "$LABELS_FILE" 2>/dev/null || true
+          done
+
+          LABEL_CSV=$(sort -u "$LABELS_FILE" | grep -v '^$' | paste -sd ',' - || echo "")
+          rm -f "$LABELS_FILE"
+
+          if [ -n "$LABEL_CSV" ]; then
+            echo "Propagating labels to PR #$PR_NUMBER: $LABEL_CSV"
+            gh pr edit "$PR_NUMBER" \
+              --repo "$FULL_REPO" \
+              --add-label "$LABEL_CSV" || true
+          else
+            echo "No labels to propagate"
+          fi
 
   # ---------------------------------------------------------------------------
   # PR Edited → Re-check linked issues and update project board
@@ -424,6 +481,22 @@ jobs:
               ensure_status "$ISSUE_NODE_ID" "In Review"
             fi
           done
+
+          # Propagate issue labels to PR
+          LABELS_FILE=$(mktemp)
+          for ISSUE_NUM in $ISSUE_NUMBERS; do
+            gh issue view "$ISSUE_NUM" \
+              --repo "$FULL_REPO" \
+              --json labels --jq '.labels[].name' >> "$LABELS_FILE" 2>/dev/null || true
+          done
+          LABEL_CSV=$(sort -u "$LABELS_FILE" | grep -v '^$' | paste -sd ',' - || echo "")
+          rm -f "$LABELS_FILE"
+          if [ -n "$LABEL_CSV" ]; then
+            echo "Propagating labels to PR #$PR_NUMBER: $LABEL_CSV"
+            gh pr edit "$PR_NUMBER" \
+              --repo "$FULL_REPO" \
+              --add-label "$LABEL_CSV" || true
+          fi
 
   # ---------------------------------------------------------------------------
   # PR Merged → Move issue to "Done" and close it
