@@ -7,15 +7,16 @@
 # Events handled:
 #   - Issue opened → Scan title + body for keywords → Apply matching labels
 #
-# Labels applied:
+# Brands applied:
+#   feature      — [FEATURE], feature, add, implement, improve, enhance, new, request
 #   bug          — [BUG], error, crash, broken, not working, fail, regression
-#   enhancement  — [FEATURE], feature, add, implement, improve, enhance, new, request
 #   documentation— [DOCS], docs, documentation, readme, guide, typo, spelling
-#   question     — [QUESTION], question, how to, help, confused, clarify, explain
-#   performance  — [PERF], perf, slow, speed, optimize, memory, latency
 #   security     — [SECURITY], security, vulnerability, CVE, auth, token, XSS, injection
+#   performance  — [PERF], perf, slow, speed, optimize, memory, latency
 #   ui/ux        — [UI/UX], UI, UX, design, layout, style, CSS, responsive, visual
+#   devops       — [DEVOPS], devops, infra, deploy, pipeline, docker, kubernetes, aws
 #   testing      — [TEST], test, coverage, spec, assert, mock, CI, flaky
+#   ai           — [AI], ai, ml, model, prompt, generation, llm, inference
 #
 # Note: Labels are created automatically if they don't already exist.
 # =============================================================================
@@ -57,7 +58,7 @@ jobs:
 
           # Feature / Enhancement indicators
           if echo "$TEXT" | grep -qiE '\b(feature|add(ing)?|implement|improv(e|ing|ement)|enhanc(e|ing|ement)|new|request|proposal|suggest(ion)?|wish|would be nice)\b'; then
-            LABELS+=("enhancement")
+            LABELS+=("feature")
           fi
 
           # Documentation indicators
@@ -65,9 +66,14 @@ jobs:
             LABELS+=("documentation")
           fi
 
-          # Question indicators
-          if echo "$TEXT" | grep -qiE '\b(question|how (to|do|can)|help|confused|clarify|explain|what is|where is|why does)\b'; then
-            LABELS+=("question")
+          # DevOps indicators
+          if echo "$TEXT" | grep -qiE '\b(devops|infra(structure)?|deploy(ment)?|pipeline|docker|kubernetes|k8s|aws|gcp|azure|ci/cd|terraform)\b'; then
+            LABELS+=("devops")
+          fi
+
+          # AI indicators
+          if echo "$TEXT" | grep -qiE '\b(ai|ml|model|prompt|generation|llm|inference|neural network|hallucinat(e|ion))\b'; then
+            LABELS+=("ai")
           fi
 
           # Performance indicators
@@ -103,25 +109,27 @@ jobs:
 
           # Ensure labels exist (create with default color if missing)
           declare -A LABEL_COLORS=(
+            ["feature"]="a2eeef"
             ["bug"]="d73a4a"
-            ["enhancement"]="a2eeef"
             ["documentation"]="0075ca"
-            ["question"]="d876e3"
-            ["performance"]="f9d0c4"
             ["security"]="e4e669"
+            ["performance"]="f9d0c4"
             ["ui/ux"]="7057ff"
+            ["devops"]="ffa500"
             ["testing"]="bfd4f2"
+            ["ai"]="00ff00"
           )
 
           declare -A LABEL_DESCRIPTIONS=(
+            ["feature"]="New feature or enhancement"
             ["bug"]="Something isn't working"
-            ["enhancement"]="New feature or request"
             ["documentation"]="Improvements or additions to documentation"
-            ["question"]="Further information is requested"
-            ["performance"]="Performance-related issue"
             ["security"]="Security vulnerability or concern"
+            ["performance"]="Performance-related issue"
             ["ui/ux"]="User interface or experience issue"
+            ["devops"]="Infrastructure, deployment, or DevOps issue"
             ["testing"]="Testing-related issue"
+            ["ai"]="AI-related issue, idea, or bug"
           )
 
           for LABEL in "${LABELS[@]}"; do
