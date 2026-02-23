@@ -2,6 +2,7 @@ name: Documentation
 description: Report documentation improvements or additions for Speakify
 title: "[DOCS] "
 labels: ["documentation"]
+type: "documentation"
 assignees: []
 body:
   - type: textarea

@@ -2,6 +2,7 @@ name: Feature Request
 description: Track an idea or new feature for Speakify
 title: "[FEATURE] "
 labels: ["feature"]
+type: "feature"
 assignees: []
 body:
   - type: textarea

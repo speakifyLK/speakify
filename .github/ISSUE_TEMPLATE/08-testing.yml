@@ -2,6 +2,7 @@ name: Testing
 description: Report a testing issue or request test coverage for Speakify
 title: "[TEST] "
 labels: ["testing"]
+type: "testing"
 assignees: []
 body:
   - type: textarea

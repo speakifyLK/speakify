@@ -2,6 +2,7 @@ name: Bug Report
 description: Create a report to track a bug in Speakify
 title: "[BUG] "
 labels: ["bug"]
+type: "bug"
 assignees: []
 body:
   - type: textarea

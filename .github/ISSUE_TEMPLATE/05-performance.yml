@@ -2,6 +2,7 @@ name: Performance Issue
 description: Report a performance problem in Speakify
 title: "[PERF] "
 labels: ["performance"]
+type: "performance"
 assignees: []
 body:
   - type: textarea
